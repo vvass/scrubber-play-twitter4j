@@ -1,0 +1,23 @@
+# IDE Stuff
+##############
+/.classpath
+/project
+*.iml
+*.ipr
+*.iws
+/.cache
+/.idea
+/.settings
+/target
+/.idea_modules
+/.project
+/.sbtserver
+/logs
+/RUNNING_PID
+
+# Compiled Stuff
+*.class
+
+#Local Properties file
+*.properties
+
