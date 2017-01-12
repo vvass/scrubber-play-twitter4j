@@ -8,7 +8,7 @@ import akka.actor.{ActorRef, ActorSystem, Inbox, Props}
 import akka.stream.Materializer
 import akka.stream.scaladsl._
 import play.api.mvc._
-import services.{HelloActor, MyTwitterListener}
+import services.{HelloActor, TwitterListenerService}
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
@@ -23,7 +23,7 @@ class TwitterListenerController @Inject()(implicit system: ActorSystem,
     */
   val MAX_TWEETS = 1000
 
-  val twitterListener = new MyTwitterListener
+  val twitterListener = new TwitterListenerService
 
   val actorRef: ActorRef = system.actorOf(Props[HelloActor], "helloActor")
 

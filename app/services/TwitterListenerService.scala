@@ -6,7 +6,7 @@ import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import twitter4j._
 
-class MyTwitterListener {
+class TwitterListenerService {
   import models.TweetModel._
 
   /**
