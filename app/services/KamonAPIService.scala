@@ -1,15 +1,5 @@
 package services
 
-import javax.inject._
-
-import kamon.metric.instrument.Counter
-import kamon.metric.MetricsModule
-import kamon.trace.TracerModule
-import play.api.inject.{ApplicationLifecycle, Module}
-import play.api.{Configuration, Environment, Logger}
-
-import scala.concurrent.Future
-
 //trait Kamon {
 //  def start(): Unit
 //  def shutdown(): Unit

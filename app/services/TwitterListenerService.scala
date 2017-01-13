@@ -1,19 +1,29 @@
 package services
 
+import javax.inject.Inject
+
 import akka.NotUsed
 import akka.actor.{Actor, ActorSystem}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
-import kamon.Kamon
+import configurations.TwitterListenerConfiguration
 import twitter4j._
+
+trait TwitterListenerService {
+  val tweetLanguage: String
+}
 
 /**
   * Listener that "Akka"-fies and listens to Twitter4j twitter stream
   *
   * This is how we implement akka streams.
   */
-class TwitterListenerService {
+class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
+    extends TwitterListenerService {
   import models.TweetModel._
+
+  override val tweetLanguage =
+    this.config.tweetFilter.getString("listener.language").get
 
   //Akka Actor system and materializer must be initialized
   implicit val system = ActorSystem("TwitterListener")
@@ -79,6 +89,7 @@ class TwitterListenerService {
 
       //Statuses will be asynchronously sent to publisher actor
       override def onStatus(status: Status): Unit = {
+        println(status.toString)
         actorRef ! new Tweet(status.getText, status.getUser.getName)
       }
 
@@ -93,7 +104,7 @@ class TwitterListenerService {
     twitterStream.addListener(statusListener)
 
     // This makes sure that you are only processing english typed texts
-    twitterStream.sample("en") // TODO add this to configs
+    twitterStream.sample(tweetLanguage) // TODO add this to configs
 
     // Return Akka source of Tweets we just defined
     Source.fromPublisher(publisher)

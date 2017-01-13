@@ -7,25 +7,31 @@ import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem, Inbox, Props}
 import akka.stream.Materializer
 import akka.stream.scaladsl._
+import com.google.inject.ImplementedBy
+import kamon.annotation.{Count, EnableKamon}
 import play.api.mvc._
-import services.{HelloActor, TwitterListenerService}
-import kamon.annotation.EnableKamon
-import kamon.annotation.Count;
-import scala.concurrent.{ExecutionContext, Future}
+import services.{HelloActor, TwitterListenerServiceImp}
+
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+
+@ImplementedBy(classOf[TwitterListenerController])
+trait TwitterListenerController {
+  def actor
+}
 
 /**
   * Controller interacting with twitter listener
   */
 @EnableKamon
-class TwitterListenerController @Inject()(implicit system: ActorSystem,
-                                          materializer: Materializer)
+class TwitterListenerControllerImp @Inject()(
+    implicit system: ActorSystem,
+    materializer: Materializer,
+    twitterListenerServiceImp: TwitterListenerServiceImp)
     extends Controller {
   import models.TweetModel._
 
-  val MAX_TWEETS = 1000
-
-  val twitterListener = new TwitterListenerService
+  val MAX_TWEETS = 100 // TODO add to configuration
 
   val actorRef: ActorRef = system.actorOf(Props[HelloActor], "helloActor")
 
@@ -53,7 +59,7 @@ class TwitterListenerController @Inject()(implicit system: ActorSystem,
     /**
       * Main source is twitter streamer from twitter4j, start listening to it
       */
-    val source: Source[Tweet, NotUsed] = twitterListener.listen
+    val source: Source[Tweet, NotUsed] = twitterListenerServiceImp.listen
 
     /**
       * This is how we send data to the broswer for display. We take the source
@@ -73,7 +79,7 @@ class TwitterListenerController @Inject()(implicit system: ActorSystem,
     /**
       * Obtains Future[Seq[Set[Tweet]] from Twitter listener and displays size and hashtags for each tweet
       */
-    val seq = twitterListener.hashTags
+    val seq = twitterListenerServiceImp.hashTags
 
     //DS2
     val seqSource = Source.fromFuture(seq)
