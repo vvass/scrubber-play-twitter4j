@@ -4,16 +4,17 @@ import akka.NotUsed
 import akka.actor.{Actor, ActorSystem}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
+import kamon.Kamon
 import twitter4j._
 
+/**
+  * Listener that "Akka"-fies and listens to Twitter4j twitter stream
+  *
+  * This is how we implement akka streams.
+  */
 class TwitterListenerService {
   import models.TweetModel._
 
-  /**
-    * Listener that "Akka"-fies and listens to Twitter4j twitter stream
-    *
-    * This is how we implement akka streams.
-    */
   //Akka Actor system and materializer must be initialized
   implicit val system = ActorSystem("TwitterListener")
 
@@ -48,18 +49,20 @@ class TwitterListenerService {
   // TODO will need to be configered somehow
   // TODO Metrics testing for drop Head, we need to inc and dec the buffer size
 
+  /**
+    * Registers listener to twitterStream and starts listening to all english tweets
+    *
+    * @return Akka Source of Tweets taken from publisher
+    */
   def listen: Source[Tweet, NotUsed] = {
 
-    /**
-      * Registers listener to twitterStream and starts listening to all english tweets
-      *
-      * @return Akka Source of Tweets taken from publisher
-      */
     // Create ActorRef Source producing Tweet events
     val (actorRef, publisher) = Source
       .actorRef[Tweet](bufferSize, overflowStrategy)
-      //A publisher that is created with Sink.asPublisher(false) supports only a single subscription
-      //Keeping both will take both parts of a sink and not just the materialized portion (right)
+      /**
+        * A publisher that is created with Sink.asPublisher(false) supports only a single subscription
+        * Keeping both will take both parts of a sink and not just the materialized portion (right)
+        */
       .toMat(Sink.asPublisher(false))(Keep.both) //TODO false needs to be in a configuration
       .run()
 
@@ -96,13 +99,13 @@ class TwitterListenerService {
     Source.fromPublisher(publisher)
   }
 
+  /**
+    * Filters tweet stream for those containing hashtags
+    *
+    * @return Future of Seq containing set of hashtags in each tweet
+    */
   def hashTags = {
 
-    /**
-      * Filters tweet stream for those containing hashtags
-      *
-      * @return Future of Seq containing set of hashtags in each tweet
-      */
     val source: Source[Tweet, NotUsed] = this.listen
 
     source

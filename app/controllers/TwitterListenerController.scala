@@ -9,18 +9,20 @@ import akka.stream.Materializer
 import akka.stream.scaladsl._
 import play.api.mvc._
 import services.{HelloActor, TwitterListenerService}
-
-import scala.concurrent.ExecutionContext
+import kamon.annotation.EnableKamon
+import kamon.annotation.Count;
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
+/**
+  * Controller interacting with twitter listener
+  */
+@EnableKamon
 class TwitterListenerController @Inject()(implicit system: ActorSystem,
                                           materializer: Materializer)
     extends Controller {
   import models.TweetModel._
 
-  /**
-    * Controller interacting with twitter listener
-    */
   val MAX_TWEETS = 1000
 
   val twitterListener = new TwitterListenerService
@@ -31,22 +33,23 @@ class TwitterListenerController @Inject()(implicit system: ActorSystem,
     ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(10)) //TODO this needs to be in config
   // TODO Metrics work
 
+  /**
+    * Tests actor to actor communication.  Inbox is actor created on the fly to retrieve response from TwitActor
+    */
+  @Count(name = "HelloCounter")
   def actor = Action {
 
-    /**
-      * Tests actor to actor communication.  Inbox is actor created on the fly to retrieve response from TwitActor
-      */
     val inbox = Inbox.create(system)
-    inbox.send(actorRef, ", I am alive")
+    inbox.send(actorRef, " I am alive")
 
     Ok(inbox.receive(5.seconds).asInstanceOf[String])
   }
 
+  /**
+    * Displays tweets from TwitterListener tweet stream
+    */
   def stream = Action {
 
-    /**
-      * Displays tweets from TwitterListener tweet stream
-      */
     /**
       * Main source is twitter streamer from twitter4j, start listening to it
       */
