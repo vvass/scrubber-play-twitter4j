@@ -7,23 +7,28 @@ import akka.actor.{Actor, ActorSystem}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import configurations.TwitterListenerConfiguration
+import play.api.Logger
 import twitter4j._
 
 trait TwitterListenerService {
   val tweetLanguage: String
+  val tweetPrintBody: Boolean
 }
 
 /**
   * Listener that "Akka"-fies and listens to Twitter4j twitter stream
-  *
   * This is how we implement akka streams.
   */
 class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
     extends TwitterListenerService {
   import models.TweetModel._
 
+  // --  Configs --
   override val tweetLanguage =
     this.config.tweetFilter.getString("listener.language").get
+  override val tweetPrintBody =
+    this.config.tweetFilter.getBoolean("print.body").get
+  // -- End Of Configs --
 
   //Akka Actor system and materializer must be initialized
   implicit val system = ActorSystem("TwitterListener")
@@ -58,7 +63,7 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
   def overflowStrategy = OverflowStrategy.dropHead
   // TODO will need to be configered somehow
   // TODO Metrics testing for drop Head, we need to inc and dec the buffer size
-
+  // TODO Metrics need to test this against WSCLIENT to see if there is a speed boost
   /**
     * Registers listener to twitterStream and starts listening to all english tweets
     *
@@ -66,9 +71,11 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
     */
   def listen: Source[Tweet, NotUsed] = {
 
+    Logger.info("Started listening to twitter stream api.")
+
     // Create ActorRef Source producing Tweet events
     val (actorRef, publisher) = Source
-      .actorRef[Tweet](bufferSize, overflowStrategy)
+      .actorRef[Tweet](bufferSize, overflowStrategy) // TODO Metrics add buffersize metrics
       /**
         * A publisher that is created with Sink.asPublisher(false) supports only a single subscription
         * Keeping both will take both parts of a sink and not just the materialized portion (right)
@@ -89,15 +96,18 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
 
       //Statuses will be asynchronously sent to publisher actor
       override def onStatus(status: Status): Unit = {
-        println(status.toString)
-        actorRef ! new Tweet(status.getText, status.getUser.getName)
+        if (tweetPrintBody) println(status.toString)
+        actorRef ! new Tweet(status.getId,
+                             status.getText,
+                             status.getUser.getScreenName)
       }
 
       override def onTrackLimitationNotice(i: Int): Unit = { //TODO something here
       }
 
-      override def onException(e: Exception): Unit =
+      override def onException(e: Exception): Unit = {
         e.printStackTrace() // TODO custome exception here and log debug
+      }
     }
 
     // Tie our listener to the TwitterStream and start listening

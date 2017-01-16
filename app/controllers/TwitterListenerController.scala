@@ -16,9 +16,7 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 @ImplementedBy(classOf[TwitterListenerController])
-trait TwitterListenerController {
-  def actor
-}
+trait TwitterListenerController {}
 
 /**
   * Controller interacting with twitter listener
@@ -28,7 +26,8 @@ class TwitterListenerControllerImp @Inject()(
     implicit system: ActorSystem,
     materializer: Materializer,
     twitterListenerServiceImp: TwitterListenerServiceImp)
-    extends Controller {
+    extends Controller
+    with TwitterListenerController {
   import models.TweetModel._
 
   val MAX_TWEETS = 100 // TODO add to configuration
@@ -62,13 +61,13 @@ class TwitterListenerControllerImp @Inject()(
     val source: Source[Tweet, NotUsed] = twitterListenerServiceImp.listen
 
     /**
-      * This is how we send data to the broswer for display. We take the source
+      * This is how we send data to the browser for display. We take the source
       * and send it in chunks to the browser for display as @content. See views.
       */
     Ok.chunked(
       source
         .map { tweet =>
-          "Text: " + tweet.body + " User: " + tweet.user + "\n"
+          "ID: " + tweet.id + " Text: " + tweet.text + " User: " + tweet.user + "\n"
         }
         .limit(MAX_TWEETS) //Stops after 1000 displayed tweets
     )

@@ -3,11 +3,11 @@
 # ~~~~
 
 # An example controller showing a sample home page
-GET     /                           controllers.TwitterListenerController.actor
+GET     /                           controllers.TwitterListenerControllerImp.actor
 
-GET     /twitter                    controllers.TwitterListenerController.stream
+GET     /twitter                    controllers.TwitterListenerControllerImp.stream
 
-GET     /hashtags                   controllers.TwitterListenerController.hashTagSequence
+GET     /hashtags                   controllers.TwitterListenerControllerImp.hashTagSequence
 
 
 # Map static resources from the /public folder to the /assets URL path
