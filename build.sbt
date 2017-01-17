@@ -2,10 +2,16 @@ import Dependencies._
 
 name := """scrubber-play-twitter4j"""
 
+organization := "44Lab5"
+
+version := "2.0"
+
+scalaVersion := "2.11.7"
+
 version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayScala)
+  .enablePlugins(PlayScala, UniversalPlugin, DockerPlugin)
   .settings(
     libraryDependencies ++=
       Seq(
@@ -35,7 +41,9 @@ lazy val root = (project in file("."))
       )
   )
 
-scalaVersion := "2.11.7"
+//Settings for docker publish plugin
+dockerExposedPorts := Seq(1234, 1234)
+
 
 resolvers ++= Dependencies.resolutionRepos
 
