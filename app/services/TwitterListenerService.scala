@@ -1,19 +1,37 @@
 package services
 
+import java.net.URLEncoder
+import javax.inject.Inject
+
 import akka.NotUsed
-import akka.actor.{Actor, ActorSystem}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
+import configurations.TwitterListenerConfiguration
+import models.TweetModel.Tweet
+import play.api.Logger
 import twitter4j._
 
-class TwitterListenerService {
+import scala.util.Success
+
+trait TwitterListenerService {
+  val tweetLanguage: String
+  val tweetPrintBody: Boolean
+}
+
+/**
+  * Listener that "Akka"-fies and listens to Twitter4j twitter stream
+  * This is how we implement akka streams.
+  */
+class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, ccsi: CouchClientServiceImp)
+    extends TwitterListenerService {
   import models.TweetModel._
 
-  /**
-    * Listener that "Akka"-fies and listens to Twitter4j twitter stream
-    *
-    * This is how we implement akka streams.
-    */
+  // --  Configs --
+  override val tweetLanguage = this.config.tweetFilter.getString("listener.language").get
+  override val tweetPrintBody = this.config.tweetFilter.getBoolean("print.body").get
+  // -- End Of Configs --
+
   //Akka Actor system and materializer must be initialized
   implicit val system = ActorSystem("TwitterListener")
 
@@ -47,19 +65,24 @@ class TwitterListenerService {
   def overflowStrategy = OverflowStrategy.dropHead
   // TODO will need to be configered somehow
   // TODO Metrics testing for drop Head, we need to inc and dec the buffer size
-
+  // TODO Metrics need to test this against WSCLIENT to see if there is a speed boost
+  
+  /**
+    * Registers listener to twitterStream and starts listening to all english tweets
+    *
+    * @return Akka Source of Tweets taken from publisher
+    */
   def listen: Source[Tweet, NotUsed] = {
 
-    /**
-      * Registers listener to twitterStream and starts listening to all english tweets
-      *
-      * @return Akka Source of Tweets taken from publisher
-      */
+    Logger.info("Started listening to twitter stream api.")
+
     // Create ActorRef Source producing Tweet events
     val (actorRef, publisher) = Source
-      .actorRef[Tweet](bufferSize, overflowStrategy)
-      //A publisher that is created with Sink.asPublisher(false) supports only a single subscription
-      //Keeping both will take both parts of a sink and not just the materialized portion (right)
+      .actorRef[Tweet](bufferSize, overflowStrategy) // TODO Metrics add buffersize metrics
+      /**
+        * A publisher that is created with Sink.asPublisher(false) supports only a single subscription
+        * Keeping both will take both parts of a sink and not just the materialized portion (right)
+        */
       .toMat(Sink.asPublisher(false))(Keep.both) //TODO false needs to be in a configuration
       .run()
 
@@ -76,52 +99,29 @@ class TwitterListenerService {
 
       //Statuses will be asynchronously sent to publisher actor
       override def onStatus(status: Status): Unit = {
-        actorRef ! new Tweet(status.getText, status.getUser.getName)
+        if (tweetPrintBody) println(status.toString)
+        
+        ccsi.runQuery(new Tweet(status.getId, status.getText, status.getUser.getScreenName))
+        
+        
       }
 
       override def onTrackLimitationNotice(i: Int): Unit = { //TODO something here
       }
 
-      override def onException(e: Exception): Unit =
+      override def onException(e: Exception): Unit = {
         e.printStackTrace() // TODO custome exception here and log debug
+      }
     }
 
     // Tie our listener to the TwitterStream and start listening
     twitterStream.addListener(statusListener)
 
     // This makes sure that you are only processing english typed texts
-    twitterStream.sample("en") // TODO add this to configs
+    twitterStream.sample(tweetLanguage) // TODO add this to configs
 
     // Return Akka source of Tweets we just defined
     Source.fromPublisher(publisher)
   }
 
-  def hashTags = {
-
-    /**
-      * Filters tweet stream for those containing hashtags
-      *
-      * @return Future of Seq containing set of hashtags in each tweet
-      */
-    val source: Source[Tweet, NotUsed] = this.listen
-
-    source
-      .filter(_.hashTags.nonEmpty)
-      .take(100)
-      .map(_.hashTags)
-      .runWith(Sink.seq)
-  }
-
-}
-
-class HelloActor extends Actor {
-
-  /**
-    * This is used to test that the app is up and running. This
-    * passes to a route that processes the actor and displayes
-    * the message.
-    */
-  def receive = {
-    case msg: String => sender ! s"Hello, $msg"
-  }
 }

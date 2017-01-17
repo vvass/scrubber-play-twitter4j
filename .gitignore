@@ -20,4 +20,4 @@
 
 #Local Properties file
 *.properties
-
+native/
