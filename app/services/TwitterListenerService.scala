@@ -1,14 +1,18 @@
 package services
 
+import java.net.URLEncoder
 import javax.inject.Inject
 
 import akka.NotUsed
-import akka.actor.{Actor, ActorSystem}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import configurations.TwitterListenerConfiguration
+import models.TweetModel.Tweet
 import play.api.Logger
 import twitter4j._
+
+import scala.util.Success
 
 trait TwitterListenerService {
   val tweetLanguage: String
@@ -19,15 +23,13 @@ trait TwitterListenerService {
   * Listener that "Akka"-fies and listens to Twitter4j twitter stream
   * This is how we implement akka streams.
   */
-class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
+class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, ccsi: CouchClientServiceImp)
     extends TwitterListenerService {
   import models.TweetModel._
 
   // --  Configs --
-  override val tweetLanguage =
-    this.config.tweetFilter.getString("listener.language").get
-  override val tweetPrintBody =
-    this.config.tweetFilter.getBoolean("print.body").get
+  override val tweetLanguage = this.config.tweetFilter.getString("listener.language").get
+  override val tweetPrintBody = this.config.tweetFilter.getBoolean("print.body").get
   // -- End Of Configs --
 
   //Akka Actor system and materializer must be initialized
@@ -64,6 +66,7 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
   // TODO will need to be configered somehow
   // TODO Metrics testing for drop Head, we need to inc and dec the buffer size
   // TODO Metrics need to test this against WSCLIENT to see if there is a speed boost
+  
   /**
     * Registers listener to twitterStream and starts listening to all english tweets
     *
@@ -97,9 +100,10 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
       //Statuses will be asynchronously sent to publisher actor
       override def onStatus(status: Status): Unit = {
         if (tweetPrintBody) println(status.toString)
-        actorRef ! new Tweet(status.getId,
-                             status.getText,
-                             status.getUser.getScreenName)
+        
+        ccsi.runQuery(new Tweet(status.getId, status.getText, status.getUser.getScreenName))
+        
+        
       }
 
       override def onTrackLimitationNotice(i: Int): Unit = { //TODO something here
@@ -120,32 +124,4 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration)
     Source.fromPublisher(publisher)
   }
 
-  /**
-    * Filters tweet stream for those containing hashtags
-    *
-    * @return Future of Seq containing set of hashtags in each tweet
-    */
-  def hashTags = {
-
-    val source: Source[Tweet, NotUsed] = this.listen
-
-    source
-      .filter(_.hashTags.nonEmpty)
-      .take(100)
-      .map(_.hashTags)
-      .runWith(Sink.seq)
-  }
-
-}
-
-class HelloActor extends Actor {
-
-  /**
-    * This is used to test that the app is up and running. This
-    * passes to a route that processes the actor and displayes
-    * the message.
-    */
-  def receive = {
-    case msg: String => sender ! s"Hello, $msg"
-  }
 }
