@@ -1,22 +1,23 @@
 package services
 
-import java.net.URLEncoder
 import javax.inject.Inject
 
 import akka.NotUsed
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import configurations.TwitterListenerConfiguration
-import models.TweetModel.Tweet
+import exceptions.{ListenerException}
 import play.api.Logger
 import twitter4j._
-
-import scala.util.Success
 
 trait TwitterListenerService {
   val tweetLanguage: String
   val tweetPrintBody: Boolean
+  val maxTweets: Int
+  val executionThreadPoolConfig: Int
+  val bufferSizeConfig: Int
+  val publisherAsSingleSubscription: Boolean
 }
 
 /**
@@ -30,6 +31,10 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
   // --  Configs --
   override val tweetLanguage = this.config.tweetFilter.getString("listener.language").get
   override val tweetPrintBody = this.config.tweetFilter.getBoolean("print.body").get
+  override val maxTweets = this.config.tweetFilter.getInt("max.tweets").get
+  override val executionThreadPoolConfig = this.config.tweetFilter.getInt("execution.threadpool.config").get
+  override val bufferSizeConfig = this.config.tweetFilter.getInt("buffer.size.config").get
+  override val publisherAsSingleSubscription = this.config.tweetFilter.getBoolean("publisher.as.single.subscription").get
   // -- End Of Configs --
 
   //Akka Actor system and materializer must be initialized
@@ -49,7 +54,7 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
     *
     * http://doc.akka.io/docs/akka-stream-and-http-experimental/1.0/scala/stream-rate.html
     */
-  implicit val materializer = ActorMaterializer() // TODO set up throttle configuration for buffers
+  implicit val materializer = ActorMaterializer() // TODO Metrics set up throttle configuration for buffers
 
   /**
     * Creates a singleton object for TwitterStream. This is
@@ -59,11 +64,15 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
   val twitterStream: TwitterStream = TwitterStreamFactory.getSingleton
 
   //Number of Jobs that will be processed
-  val bufferSize: Int = 100 // TODO add this to config, we will need to test this
-
-  //The strategy used when we reach buffer size, currently drop oldest in queue if taking to long
+  val bufferSize: Int = bufferSizeConfig
+  
+  /**
+    * The strategy used when we reach buffer size, currently drop oldest in queue if
+    * taking to longThe strategy used when we reach buffer size, currently drop oldest
+    * in queue if taking to long. There are other options if this doesn't work well.
+    * {droptail, dropbuffer, dropnew, backpressure, fail}
+    */
   def overflowStrategy = OverflowStrategy.dropHead
-  // TODO will need to be configered somehow
   // TODO Metrics testing for drop Head, we need to inc and dec the buffer size
   // TODO Metrics need to test this against WSCLIENT to see if there is a speed boost
   
@@ -83,18 +92,18 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
         * A publisher that is created with Sink.asPublisher(false) supports only a single subscription
         * Keeping both will take both parts of a sink and not just the materialized portion (right)
         */
-      .toMat(Sink.asPublisher(false))(Keep.both) //TODO false needs to be in a configuration
+      .toMat(Sink.asPublisher(publisherAsSingleSubscription))(Keep.both)
       .run()
 
     val statusListener: StatusListener = new StatusListener {
-      override def onStallWarning(stallWarning: StallWarning): Unit = { //TODO something here
+      override def onStallWarning(stallWarning: StallWarning): Unit = {
       }
 
       override def onDeletionNotice(statusDeletionNotice: StatusDeletionNotice)
-        : Unit = { //TODO something here
+        : Unit = {
       }
 
-      override def onScrubGeo(l: Long, l1: Long): Unit = { //TODO something here
+      override def onScrubGeo(l: Long, l1: Long): Unit = {
       }
 
       //Statuses will be asynchronously sent to publisher actor
@@ -103,14 +112,13 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
         
         ccsi.runQuery(new Tweet(status.getId, status.getText, status.getUser.getScreenName))
         
-        
       }
 
-      override def onTrackLimitationNotice(i: Int): Unit = { //TODO something here
+      override def onTrackLimitationNotice(i: Int): Unit = {
       }
 
       override def onException(e: Exception): Unit = {
-        e.printStackTrace() // TODO custome exception here and log debug
+        throw new ListenerException
       }
     }
 
@@ -118,7 +126,7 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
     twitterStream.addListener(statusListener)
 
     // This makes sure that you are only processing english typed texts
-    twitterStream.sample(tweetLanguage) // TODO add this to configs
+    twitterStream.sample(tweetLanguage)
 
     // Return Akka source of Tweets we just defined
     Source.fromPublisher(publisher)
