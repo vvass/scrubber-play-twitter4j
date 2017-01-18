@@ -25,9 +25,9 @@ class TwitterListenerControllerImp @Inject()(materializer: Materializer, tlsi: T
   extends Controller with TwitterListenerController {
   import models.TweetModel._
 
-  val MAX_TWEETS = 100 // TODO add to configuration
+  val MAX_TWEETS = tlsi.maxTweets
 
-  implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(10)) //TODO this needs to be in config
+  implicit val ec = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(tlsi.executionThreadPoolNumber))
   // TODO Metrics work
   
   /**
