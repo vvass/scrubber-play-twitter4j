@@ -11,7 +11,8 @@ scalaVersion := "2.11.7"
 version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayScala, UniversalPlugin, DockerPlugin)
+  .enablePlugins(PlayScala, UniversalPlugin, DockerPlugin, PlayAkkaHttpServer)
+  .disablePlugins(PlayNettyServer)
   .settings(
     libraryDependencies ++=
       Seq(
@@ -49,7 +50,8 @@ resolvers ++= Dependencies.resolutionRepos
 
 aspectjSettings
 
-fork in run := true
+parallelExecution in run := true
+fork in run := false
 
 javaOptions in run <++= AspectjKeys.weaverOptions in Aspectj
 

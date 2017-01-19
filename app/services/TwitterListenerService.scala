@@ -6,16 +6,17 @@ import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
+import com.google.inject.ImplementedBy
 import configurations.TwitterListenerConfiguration
-import exceptions.{ListenerException}
+import exceptions.ListenerException
 import play.api.Logger
 import twitter4j._
 
+@ImplementedBy(classOf[TwitterListenerServiceImp])
 trait TwitterListenerService {
   val tweetLanguage: String
   val tweetPrintBody: Boolean
   val maxTweets: Int
-  val executionThreadPoolConfig: Int
   val bufferSizeConfig: Int
   val publisherAsSingleSubscription: Boolean
 }
@@ -32,7 +33,6 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
   override val tweetLanguage = this.config.tweetFilter.getString("listener.language").get
   override val tweetPrintBody = this.config.tweetFilter.getBoolean("print.body").get
   override val maxTweets = this.config.tweetFilter.getInt("max.tweets").get
-  override val executionThreadPoolConfig = this.config.tweetFilter.getInt("execution.threadpool.config").get
   override val bufferSizeConfig = this.config.tweetFilter.getInt("buffer.size.config").get
   override val publisherAsSingleSubscription = this.config.tweetFilter.getBoolean("publisher.as.single.subscription").get
   // -- End Of Configs --
@@ -108,9 +108,10 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
 
       //Statuses will be asynchronously sent to publisher actor
       override def onStatus(status: Status): Unit = {
+        val startTimestamp = System.currentTimeMillis()
         if (tweetPrintBody) println(status.toString)
         
-        ccsi.runQuery(new Tweet(status.getId, status.getText, status.getUser.getScreenName))
+        actorRef ! ccsi.runQuery(startTimestamp, Tweet(status.getId, status.getText, status.getUser.getScreenName))
         
       }
 
