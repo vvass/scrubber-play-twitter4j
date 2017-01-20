@@ -1,16 +1,20 @@
 package services
 
+import java.net.{DatagramPacket, DatagramSocket, InetAddress, InetSocketAddress}
 import javax.inject.Inject
 
 import akka.NotUsed
-import akka.actor.ActorSystem
+import akka.actor.{Actor, ActorSystem, Props}
+import akka.io.Udp.SimpleSender
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import com.google.inject.ImplementedBy
 import configurations.TwitterListenerConfiguration
 import exceptions.ListenerException
 import play.api.Logger
+import play.api.libs.ws.WSClient
 import twitter4j._
+import twitter4j.json.DataObjectFactory
 
 @ImplementedBy(classOf[TwitterListenerServiceImp])
 trait TwitterListenerService {
@@ -25,11 +29,11 @@ trait TwitterListenerService {
   * Listener that "Akka"-fies and listens to Twitter4j twitter stream
   * This is how we implement akka streams.
   */
-class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, ccsi: CouchClientServiceImp)
+class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration,  ws: WSClient, ccsi: CouchClientServiceImp)
     extends TwitterListenerService {
   import models.TweetModel._
 
-  // --  Configs --
+  // -- Configs --
   override val tweetLanguage = this.config.tweetFilter.getString("listener.language").get
   override val tweetPrintBody = this.config.tweetFilter.getBoolean("print.body").get
   override val maxTweets = this.config.tweetFilter.getInt("max.tweets").get
@@ -94,13 +98,16 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
         */
       .toMat(Sink.asPublisher(publisherAsSingleSubscription))(Keep.both)
       .run()
+  
+    val remote = new InetSocketAddress("127.0.0.1", 8136) // TODO configure
+  
+    val sender = system.actorOf(Props(new ccsi.SimpleSender(remote)))
 
     val statusListener: StatusListener = new StatusListener {
       override def onStallWarning(stallWarning: StallWarning): Unit = {
       }
 
-      override def onDeletionNotice(statusDeletionNotice: StatusDeletionNotice)
-        : Unit = {
+      override def onDeletionNotice(statusDeletionNotice: StatusDeletionNotice): Unit = {
       }
 
       override def onScrubGeo(l: Long, l1: Long): Unit = {
@@ -110,16 +117,19 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
       override def onStatus(status: Status): Unit = {
         val startTimestamp = System.currentTimeMillis()
         if (tweetPrintBody) println(status.toString)
-        
-        actorRef ! ccsi.runQuery(startTimestamp, Tweet(status.getId, status.getText, status.getUser.getScreenName))
-        
+        val q = "\""
+        sender ! s"{${q}id_str${q}:${q}${status.getId}${q}," +
+          s"${q}text${q}:${q}${status.getText}${q}," +
+          s"${q}screen_name${q}:${q}${status.getUser.getScreenName}${q}}"
+  
       }
 
       override def onTrackLimitationNotice(i: Int): Unit = {
       }
 
       override def onException(e: Exception): Unit = {
-        throw new ListenerException
+//        throw new ListenerException
+        e.printStackTrace()
       }
     }
 
