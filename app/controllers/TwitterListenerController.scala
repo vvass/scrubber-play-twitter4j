@@ -1,6 +1,5 @@
 package controllers
 
-import java.util.concurrent.Executors
 import javax.inject.Inject
 
 import akka.NotUsed
@@ -11,8 +10,6 @@ import com.google.inject.ImplementedBy
 import kamon.annotation.EnableKamon
 import play.api.mvc._
 import services.TwitterListenerServiceImp
-
-import scala.concurrent.ExecutionContext
 
 @ImplementedBy(classOf[TwitterListenerController])
 trait TwitterListenerController {}

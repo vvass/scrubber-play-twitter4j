@@ -3,17 +3,15 @@ package services
 import java.net._
 import javax.inject.Inject
 
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, PoisonPill, Props}
-import akka.io.{IO, Udp, UdpConnected}
+import akka.actor.{Actor, ActorRef}
+import akka.io.{IO, Udp}
 import akka.util.ByteString
 import com.google.inject.ImplementedBy
 import configurations.CouchClientConfiguration
-import models.TweetModel.Tweet
 import play.api.Logger
-import play.api.libs.ws.{WSClient, WSRequest}
+import play.api.libs.ws.WSClient
 
 import scala.concurrent.ExecutionContext
-import scala.util.{Failure, Success}
 
 @ImplementedBy(classOf[CouchClientServiceImp])
 trait CouchClientService {
@@ -45,7 +43,7 @@ class CouchClientServiceImp @Inject()(implicit ec: ExecutionContext, ws: WSClien
     def ready(send: ActorRef): Receive = {
       case msg: String =>
         Logger.info("Sending " + msg)
-        send ! Udp.Send(ByteString(msg), remote)
+        send ! Udp.Send(ByteString(msg, "UTF-8").compact, remote)
     }
   }
 }

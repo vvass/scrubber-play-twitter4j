@@ -1,20 +1,18 @@
 package services
 
-import java.net.{DatagramPacket, DatagramSocket, InetAddress, InetSocketAddress}
+import java.net.InetSocketAddress
 import javax.inject.Inject
 
 import akka.NotUsed
-import akka.actor.{Actor, ActorSystem, Props}
-import akka.io.Udp.SimpleSender
+import akka.actor.{ActorSystem, Props}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import com.google.inject.ImplementedBy
 import configurations.TwitterListenerConfiguration
-import exceptions.ListenerException
 import play.api.Logger
+import play.api.libs.json.{JsNumber, JsObject, JsString, Json}
 import play.api.libs.ws.WSClient
 import twitter4j._
-import twitter4j.json.DataObjectFactory
 
 @ImplementedBy(classOf[TwitterListenerServiceImp])
 trait TwitterListenerService {
@@ -117,10 +115,15 @@ class TwitterListenerServiceImp @Inject()(config: TwitterListenerConfiguration, 
       override def onStatus(status: Status): Unit = {
         val startTimestamp = System.currentTimeMillis()
         if (tweetPrintBody) println(status.toString)
-        val q = "\""
-        sender ! s"{${q}id_str${q}:${q}${status.getId}${q}," +
-          s"${q}text${q}:${q}${status.getText}${q}," +
-          s"${q}screen_name${q}:${q}${status.getUser.getScreenName}${q}}"
+        
+        
+        val json = Json.obj(
+          "id_str" -> status.getId,
+          "text" -> status.getText,
+          "screen_name" -> status.getUser.getScreenName
+        )
+        
+        sender ! Json.stringify(json)
   
       }
 
