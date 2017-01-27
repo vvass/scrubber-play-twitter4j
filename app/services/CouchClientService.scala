@@ -1,14 +1,19 @@
 package services
 
-import java.net.URLEncoder
+import java.net._
 import javax.inject.Inject
 
+import akka.actor.{Actor, ActorRef}
+import akka.io.{IO, Udp}
+import akka.util.ByteString
+import com.google.inject.ImplementedBy
 import configurations.CouchClientConfiguration
-import play.api.libs.ws.{WSClient, WSRequest}
+import play.api.Logger
+import play.api.libs.ws.WSClient
 
-import scala.concurrent.Future
-import scala.util.{Failure, Success}
+import scala.concurrent.ExecutionContext
 
+@ImplementedBy(classOf[CouchClientServiceImp])
 trait CouchClientService {
   val CCHost: String
   val CCPort: String
@@ -18,33 +23,31 @@ trait CouchClientService {
 /**
   * Couch Client service that work to query couchbase-client-main
   */
-class CouchClientServiceImp @Inject()(ws: WSClient, config: CouchClientConfiguration) extends CouchClientService {
-  import models.TweetModel._
+class CouchClientServiceImp @Inject()(implicit ec: ExecutionContext, ws: WSClient, config: CouchClientConfiguration) extends CouchClientService {
   
-  override val CCHost = this.config.couchclient.getString("host").get
+  // -- Configs --
+  override val CCHost = this.config.couchclient.getString("host").get // TODO need to remove or reuse
   override val CCPort = this.config.couchclient.getString("port").get
   override val CCPath = this.config.couchclient.getString("path").get
+  // -- End Configs --
   
-  implicit val context = play.api.libs.concurrent.Execution.Implicits.defaultContext
-  
-  def runQuery(tweet: Tweet) = {
-    val request: WSRequest = ws
-      .url(s"http://$CCHost:$CCPort/$CCPath/${tweet.id}/${tweet.user}/${URLEncoder.encode(tweet.text.toString, "UTF-8").replaceAll("\\+","%20")}")
-      .withHeaders("Accept" -> "application/json")
+  class SimpleSender(remote: InetSocketAddress) extends Actor {
+    import context.system
+    IO(Udp) ! Udp.SimpleSender
     
-    val r = request.get()
-  
-    r onComplete {
-      case Success(response) => {
-        println(response.body.toString())
-        if(response.body.contains("Trump")){
-          println(tweet.text)
-        }
-      
-      }
-      case Failure(error) => {
-        println(error)
-      }
+    def receive = {
+      case Udp.SimpleSenderReady =>
+        context.become(ready(sender()))
+    }
+    
+    def ready(send: ActorRef): Receive = {
+      case msg: String =>
+        Logger.info("Sending " + msg)
+        send ! Udp.Send(ByteString(msg, "UTF-8").compact, remote)
     }
   }
 }
+
+
+
+
